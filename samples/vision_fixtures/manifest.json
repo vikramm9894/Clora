@@ -34,5 +34,14 @@
     "filename": "motor_stator.jpg",
     "description": "Thermal varnish carbonization and hot spot on 415V motor stator windings",
     "mime_type": "image/jpeg"
+  },
+  {
+    "sha256": "03a104cd966ba19251fb15d80d42b808070f27c95c5d5ba2fab083614ca6da2d",
+    "fixture_id": "UNCORROBORATED_TEST_ARTIFACT",
+    "equipment_id": "UNKNOWN",
+    "version": "1.0",
+    "filename": "uncorroborated_artifact.jpg",
+    "description": "Degraded / Uncorroborated test artifact (Demonstrates immediate refusal & INCONCLUSIVE output with 0 hallucination)",
+    "mime_type": "image/jpeg"
   }
 ]

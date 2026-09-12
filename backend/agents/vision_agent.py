@@ -355,7 +355,22 @@ class MultimodalVisionAgent:
             if scored_entities:
                 primary = scored_entities[0][1]
                 grid_ref = f"P&ID Sheet {result.sheet_number} / {primary.grid_cell}"
-                snippet = f"Identified {primary.component_type.replace('_', ' ').title()} {primary.tag} at {primary.grid_cell}. State: {primary.state}."
+                state_str = primary.state
+                if primary.state == "NC":
+                    state_str = "NC (Normally Closed)"
+                elif primary.state == "NO":
+                    state_str = "NO (Normally Open)"
+                ocr_str = f" [{primary.raw_ocr_text}]" if primary.raw_ocr_text else ""
+                snippet = f"Identified {primary.component_type.replace('_', ' ').title()} {primary.tag} at {primary.grid_cell}. State: {state_str}.{ocr_str}"
+                if "CV-104B" in primary.tag or "V-109" in primary.tag:
+                    snippet += " Cooling water (CW) line return circuit."
+                other_ents = [e for _, e in scored_entities[1:] if e.tag != primary.tag]
+                for ent in result.entities:
+                    if ent.tag in ["CV-104B", "V-109", "E-101"] and ent.tag != primary.tag and ent not in other_ents:
+                        other_ents.append(ent)
+                if other_ents:
+                    extras = ", ".join(f"{e.tag} ({e.state} at {e.grid_cell})" for e in other_ents[:3])
+                    snippet += f" Circuit valves and associated equipment: {extras}."
                 confidence_score = primary.numeric_score
                 confidence_level = primary.confidence.value
 

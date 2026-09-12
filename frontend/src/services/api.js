@@ -28,8 +28,8 @@ export async function getWorkspaces() {
     const data = await res.json();
     return data.items || [];
   } catch (err) {
-    console.warn('Failed to fetch workspaces:', err);
-    return [{ id: 'default-workspace', name: 'CDU Unit-02 Maintenance', description: 'MRPL Crude Distillation Unit 2' }];
+    console.warn('Backend unavailable - Failed to fetch workspaces:', err);
+    return [];
   }
 }
 
@@ -174,15 +174,17 @@ export async function getModels() {
 
     return {
       ...data,
-      active_model: typeof data.active_model === 'string' ? data.active_model : 'qwen2.5:3b',
+      status: data.status || 'online',
+      active_model: typeof data.active_model === 'string' ? data.active_model : (merged[0] || 'None'),
       available_models: merged
     };
   } catch (err) {
-    console.warn('Failed to fetch models status:', err);
+    console.warn('Backend unavailable - Failed to fetch models status:', err);
     return {
-      status: 'online',
-      active_model: 'qwen2.5:3b',
-      available_models: ['qwen2.5:3b', 'llama3.2:3b', 'phi3.5:latest']
+      status: 'offline',
+      active_model: 'None (Backend Offline)',
+      available_models: [],
+      error: err.message
     };
   }
 }
@@ -204,7 +206,7 @@ export async function getActiveModel() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
-    return { active_model: 'llama3.2:3b', runtime: 'ollama' };
+    return { active_model: 'None', status: 'offline', error: err.message };
   }
 }
 
@@ -217,6 +219,32 @@ export async function selectActiveModel(modelName) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
+
+export async function evaluateModelRoute(query, userRole = 'Operator') {
+  const res = await fetch(`${API_BASE}/api/models/route`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: query,
+      user_id: 'operator_01',
+      user_role: userRole
+    })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function getSystemMetrics() {
+  try {
+    const res = await fetch(`${API_BASE}/api/system/metrics`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Failed to fetch system metrics:', err);
+    return null;
+  }
+}
+
 
 // ============================================================================
 // Member 6: Data Intelligence, OCR, Topology & DOCX

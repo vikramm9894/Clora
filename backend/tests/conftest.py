@@ -19,7 +19,13 @@ def temp_storage_root():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         settings.STORAGE_DIR = tmp_path
+        settings.AIRGAP_LOG_PATH = tmp_path / "airgap_proof_log.jsonl"
         (tmp_path / "workspaces").mkdir(parents=True, exist_ok=True)
+        try:
+            import security.network_proof as np_module
+            np_module._global_sentinel = None
+        except Exception:
+            pass
         yield tmp_path
 
 
@@ -82,6 +88,13 @@ def client(test_db_engine, temp_storage_root, monkeypatch):
     monkeypatch.setattr(db_module, "engine", test_db_engine)
     monkeypatch.setattr(db_module, "SessionLocal", TestingSessionLocal)
     monkeypatch.setattr(settings, "DATABASE_URL", str(test_db_engine.url))
+    test_log = temp_storage_root / f"airgap_{id(test_db_engine)}.jsonl"
+    monkeypatch.setattr(settings, "AIRGAP_LOG_PATH", test_log)
+    try:
+        import security.network_proof as np_module
+        np_module._global_sentinel = None
+    except Exception:
+        pass
 
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
@@ -104,7 +117,7 @@ def sample_png_bytes():
 
 @pytest.fixture
 def sample_csv_bytes():
-    return b"timestamp,inboard_temp_c,vibration_rms,lube_oil_bar\n2026-08-30T14:15:00Z,72.1,2.3,0.4\n2026-08-30T14:22:00Z,104.2,6.8,0.3\n2026-08-30T14:35:12Z,108.5,9.82,0.2\n"
+    return b"timestamp,inboard_temp_c,vibration_rms,lube_oil_bar\n2026-08-30T14:15:00Z,72.1,2.3,0.4\n2026-08-30T14:22:00Z,88.5,6.8,0.3\n2026-08-30T14:35:12Z,104.2,9.82,0.2\n"
 
 
 @pytest.fixture

@@ -54,4 +54,7 @@ class AgentState(TypedDict, total=False):
     hitl_review_required: bool
     hitl_review_payload: dict
     visual_attestation: dict
+    telemetry_context: dict
+    execution_mode: str
+    fixture_scenario: str
 

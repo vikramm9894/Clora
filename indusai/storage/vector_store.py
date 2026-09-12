@@ -11,6 +11,9 @@ from indusai.ingestion.schema import Chunk, ChunkMetadata
 from indusai.embeddings.base import BaseEmbeddingService
 from indusai.embeddings.local_embedding import LocalSentenceTransformerEmbedding
 
+_vector_store_clients: Dict[str, Any] = {}
+
+
 class ChromaVectorStore:
     """ChromaDB storage interface with native permission and metadata filtering."""
 
@@ -20,12 +23,14 @@ class ChromaVectorStore:
         collection_name: str = "mrpl_industrial_knowledge",
         embedding_service: Optional[BaseEmbeddingService] = None
     ):
-        self.persist_directory = persist_directory
+        self.persist_directory = os.path.abspath(persist_directory)
         self.collection_name = collection_name
         self.embedding_service = embedding_service or LocalSentenceTransformerEmbedding()
 
         os.makedirs(self.persist_directory, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=self.persist_directory)
+        if self.persist_directory not in _vector_store_clients:
+            _vector_store_clients[self.persist_directory] = chromadb.PersistentClient(path=self.persist_directory)
+        self.client = _vector_store_clients[self.persist_directory]
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             metadata={"description": "MRPL Sovereign Industrial Knowledge Store"}

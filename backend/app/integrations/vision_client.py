@@ -56,9 +56,14 @@ class VisionClient:
 
         files = files_metadata or []
         img_file = next(
-            (f for f in files if str(f.get("file_type", "")).lower() in ["png", "jpg", "jpeg", "svg", "tiff", "webp", "pdf"]),
+            (f for f in files if str(f.get("file_type", "")).lower() in ["png", "jpg", "jpeg", "svg", "tiff", "webp"]),
             None
         )
+        if not img_file:
+            img_file = next(
+                (f for f in files if str(f.get("file_type", "")).lower() == "pdf" and any(k in str(f.get("filename", "")).lower() for k in ["pid", "drawing", "dwg", "schematic"])),
+                None
+            )
 
         img_id = img_file["id"] if img_file else "img-pid-cool-01"
         img_name = img_file["filename"] if img_file else "PID_Cooling_Water_Circuit_P101.png"

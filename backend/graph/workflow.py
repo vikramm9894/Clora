@@ -403,7 +403,7 @@ def build_workflow(
         routing = state.get("model_routing", {})
         query = state.get("user_query", "")
         img_artifact_id = state.get("image_artifact_id") or "img_photo_01"
-        exec_mode = state.get("execution_mode", "test")  # Default to test mode in graph if not explicitly set
+        exec_mode = state.get("execution_mode", "production")  # Default to production execution
 
         from backend.agents.vision_agent import MultimodalVisionAgent
         from backend.verification.cross_correlation import CrossModalCorrelator
@@ -411,14 +411,8 @@ def build_workflow(
 
         agent = MultimodalVisionAgent()
 
-        # 1. Telemetry context from state or DuckDB evidence
+        # 1. Telemetry context strictly from authoritative state or DuckDB reference
         telemetry = state.get("telemetry_context")
-        if not telemetry:
-            for ev in state.get("evidence", []):
-                content = ev.get("content", "")
-                if "104.2" in content or "9.82" in content:
-                    telemetry = {"vibration_rms": 9.82, "bearing_temp_c": 104.2}
-                    break
 
         meta = {"id": img_artifact_id, "execution_mode": exec_mode}
         if state.get("fixture_scenario"):

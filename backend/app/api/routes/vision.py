@@ -37,7 +37,7 @@ class InspectPhotographRequest(BaseModel):
     workspace_id: Optional[str] = Field("ws-sovereign-01", description="Workspace ID")
     telemetry_context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Operational telemetry snapshot")
     sop_context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="SOP or technical manual metadata")
-    execution_mode: Literal["production", "test"] = Field("production", description="Execution mode")
+    execution_mode: Literal["production", "test", "demo"] = Field("production", description="Execution mode")
 
 
 class HitlReviewRequest(BaseModel):
@@ -215,22 +215,25 @@ async def inspect_photograph_endpoint(req: InspectPhotographRequest):
 
     # Execute Vision Inspection through Vision Client -> Vision Agent
     telemetry = dict(req.telemetry_context or {})
-    # If standard P-101 bearing and no telemetry provided, supply standard operating snapshot for demo
-    if not telemetry and "p101" in record.filename.lower():
-        telemetry = {
-            "equipment_id": "P-101",
-            "vibration_velocity_rms_mm_s": 9.82,
-            "bearing_temperature_c": 104.2,
-            "operating_hours": 14200,
-        }
-
     sop_meta = dict(req.sop_context or {})
-    if not sop_meta and "p101" in record.filename.lower():
-        sop_meta = {
-            "sop_id": "SOP-MRPL-P101-MNT",
-            "title": "Sulzer P-101 Centrifugal Pump Bearing Inspection & Replacement Standard Operating Procedure",
-            "standard_ref": "ISO 10816-3 / API 610",
-        }
+
+    # In production, missing telemetry is valid and leads to uncorroborated / review results.
+    # Telemetry and SOP are never injected simply because a filename contains 'p101'.
+    # Only controlled demo fixtures with explicit fixture_id may supply demonstration context.
+    if req.execution_mode == "demo" and req.fixture_id:
+        if not telemetry and "p101" in req.fixture_id.lower():
+            telemetry = {
+                "equipment_id": "P-101",
+                "vibration_velocity_rms_mm_s": 9.82,
+                "bearing_temperature_c": 104.2,
+                "operating_hours": 14200,
+            }
+        if not sop_meta and "p101" in req.fixture_id.lower():
+            sop_meta = {
+                "sop_id": "SOP-MRPL-P101-MNT",
+                "title": "Sulzer P-101 Centrifugal Pump Bearing Inspection & Replacement Standard Operating Procedure",
+                "standard_ref": "ISO 10816-3 / API 610",
+            }
 
     inspection_result = await vision_client.inspect_photograph(
         workspace_id=req.workspace_id or "ws-sovereign-01",

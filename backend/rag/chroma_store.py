@@ -8,16 +8,21 @@ from typing import Any, Dict, List, Optional
 import chromadb
 
 
+_chroma_clients: Dict[str, Any] = {}
+
+
 class ChromaEvidenceStore:
     """Persistent ChromaDB vector store for sovereign industrial documents."""
 
     def __init__(
         self, collection_name: str = "industrial_knowledge", persist_path: str = "./data/chroma"
     ):
-        self.persist_path = persist_path
+        self.persist_path = os.path.abspath(persist_path)
         self.collection_name = collection_name
         os.makedirs(self.persist_path, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=self.persist_path)
+        if self.persist_path not in _chroma_clients:
+            _chroma_clients[self.persist_path] = chromadb.PersistentClient(path=self.persist_path)
+        self.client = _chroma_clients[self.persist_path]
         self.collection = self.client.get_or_create_collection(name=collection_name)
 
     def add(

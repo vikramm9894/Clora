@@ -197,13 +197,13 @@ class AirGapEnforcer:
                     break
 
         if suspicious:
-            strict_mode = os.environ.get("AIRGAP_STRICT_MODE", "warn_only").lower()
+            strict_mode = os.environ.get("AIRGAP_STRICT_MODE", "strict").lower()
             msg = (
                 f"AirGapEnforcer: Modules {suspicious} imported direct reference to "
                 f"socket.getaddrinfo BEFORE activation. DNS queries from these modules "
                 f"bypass instrumentation. Ensure AirGapEnforcer.activate() is first in main.py."
             )
-            if strict_mode == "hard_fail":
+            if strict_mode in ("hard_fail", "strict", "block"):
                 raise RuntimeError(msg)
             else:
                 logger.critical(msg)

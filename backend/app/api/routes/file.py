@@ -11,6 +11,7 @@ from fastapi import (
 from fastapi import (
     File as FastAPIFile,
 )
+from pathlib import Path
 from fastapi.responses import FileResponse as FastAPIFileresponse
 from sqlalchemy.orm import Session
 

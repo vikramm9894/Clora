@@ -10,7 +10,14 @@ from pydantic import BaseModel, Field
 from backend.graph.workflow import build_workflow
 
 routes = APIRouter(prefix="/graph", tags=["Agent Workflow"])
-workflow_runner = build_workflow()
+_workflow_runner = None
+
+
+def get_workflow_runner():
+    global _workflow_runner
+    if _workflow_runner is None:
+        _workflow_runner = build_workflow()
+    return _workflow_runner
 
 
 class QueryRequest(BaseModel):
@@ -39,7 +46,7 @@ async def run_workflow(req: QueryRequest):
             "user_role": req.user_role,
             "audit_log": [{"event": "session_started", "user": req.user_id}],
         }
-        res = workflow_runner.invoke(initial_state)
+        res = get_workflow_runner().invoke(initial_state)
         return QueryResponse(
             final_answer=res.get("final_answer", res.get("draft_answer", "")),
             confidence=float(res.get("confidence", 0.0)),

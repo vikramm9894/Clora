@@ -98,7 +98,14 @@ async def execute_query_task(query_id: str) -> None:
         # Gather workspace files metadata
         files = db.query(File).filter(File.workspace_id == workspace_id).all()
         files_metadata = [
-            {"id": f.id, "filename": f.filename, "file_type": f.file_type, "status": f.status}
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "file_type": f.file_type,
+                "status": f.status,
+                "storage_path": f.filepath,
+                "filepath": f.filepath,
+            }
             for f in files
         ]
 

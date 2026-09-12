@@ -12,6 +12,7 @@ export default function Header({
   const [timeStr, setTimeStr] = useState('');
   const [metrics, setMetrics] = useState({ blocked_attempts_count: 0, approved_connections_count: 0 });
   const [isAirGapped, setIsAirGapped] = useState(true);
+  const [backendOnline, setBackendOnline] = useState(true);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
 
@@ -41,11 +42,14 @@ export default function Header({
       try {
         const [m, s] = await Promise.all([getEgressMetrics(), getSovereigntyStatus()]);
         if (mounted) {
+          setBackendOnline(true);
           if (m) setMetrics(m);
           if (s) setIsAirGapped(s.is_air_gapped !== false);
         }
       } catch (err) {
-        // Retain safe state
+        if (mounted) {
+          setBackendOnline(false);
+        }
       }
     };
 
@@ -127,21 +131,27 @@ export default function Header({
           <div className="flex items-center gap-2.5 pr-4 border-r border-[#2e2a25]">
             <span
               className={`w-2.5 h-2.5 rounded-full ${
-                isAirGapped
+                !backendOnline
+                  ? 'bg-[#ef4444] animate-ping shadow-[0_0_8px_#ef4444]'
+                  : isAirGapped
                   ? 'bg-[#10b981] animate-pulse-glow shadow-[0_0_8px_#10b981]'
-                  : 'bg-[#ef4444] animate-pulse shadow-[0_0_8px_#ef4444]'
+                  : 'bg-[#f59e0b] animate-pulse shadow-[0_0_8px_#f59e0b]'
               }`}
             />
             <div className="flex flex-col">
               <span
                 className={`font-semibold text-xs tracking-wide ${
-                  isAirGapped ? 'text-[#10b981]' : 'text-[#ef4444]'
+                  !backendOnline
+                    ? 'text-[#ef4444]'
+                    : isAirGapped
+                    ? 'text-[#10b981]'
+                    : 'text-[#f59e0b]'
                 }`}
               >
-                {isAirGapped ? 'AIR-GAPPED MODE' : 'AIR-GAP ALERT'}
+                {!backendOnline ? 'BACKEND OFFLINE' : isAirGapped ? 'AIR-GAPPED SOVEREIGN' : 'AIR-GAP ALERT'}
               </span>
               <span className="text-[#6d675e] text-[10px]">
-                {isAirGapped ? 'No external connectivity' : 'Unapproved egress detected'}
+                {!backendOnline ? 'Disconnected (127.0.0.1:8000)' : isAirGapped ? 'Zero external egress' : 'Unapproved egress detected'}
               </span>
             </div>
           </div>

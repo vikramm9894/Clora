@@ -109,53 +109,91 @@ class AgentClient:
         files_metadata: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Analyzes sensor time-series data using Member 6 DuckDB Tabular Engine & KG."""
+        from pathlib import Path
         files = files_metadata or []
-        csv_file = next((f for f in files if f.get("file_type") in ["csv", "xlsx", "xls"]), None)
-        csv_id = csv_file["id"] if csv_file else "csv-sensor-telemetry-01"
-        csv_name = csv_file["filename"] if csv_file else "Pump_P101_Vibration_Telemetry.csv"
+        csv_file = next(
+            (f for f in files if f.get("file_type") in ["csv", "xlsx", "xls"] or str(f.get("filename", "")).lower().endswith((".csv", ".xlsx", ".xls"))),
+            None,
+        )
 
-        # Member 6 DuckDB Query integration
-        findings = [
-            "Telemetry timestamp 2026-08-30T14:22:00Z: Inboard bearing temperature spiked to 104.2°C (exceeding 80°C limit).",
-            "Telemetry timestamp 2026-08-30T14:35:12Z: Vibration velocity RMS reached 9.82 mm/s (Zone D Unacceptable Trip Threshold).",
-            "Lube oil pressure dropped to 0.4 bar at 14:15:00Z prior to thermal runaway.",
-        ]
+        if not csv_file:
+            return {
+                "findings": [],
+                "citations": [],
+                "status": "UNKNOWN",
+                "message": "No sensor telemetry records available in workspace",
+            }
 
-        query_status = "SUCCESS"
-        if self.tabular_engine:
+        csv_id = csv_file.get("id", "csv-telemetry-01")
+        csv_name = csv_file.get("filename", "telemetry.csv")
+
+        file_path = csv_file.get("storage_path") or csv_file.get("filepath") or csv_file.get("file_path") or csv_file.get("path")
+        if not file_path or not Path(file_path).exists():
+            candidate = settings.STORAGE_DIR / f"{csv_id}_{csv_name}"
+            if candidate.exists():
+                file_path = str(candidate)
+            else:
+                candidate2 = settings.STORAGE_DIR / csv_name
+                if candidate2.exists():
+                    file_path = str(candidate2)
+
+        findings = []
+        citations = []
+
+        if self.tabular_engine and file_path and Path(file_path).exists():
             try:
-                # Query in-memory table if populated
-                sql_query = (
-                    "SELECT timestamp, bearing_temp_c, vibration_rms FROM telemetry "
-                    "WHERE bearing_temp_c > 80 ORDER BY timestamp DESC LIMIT 3"
-                )
-                dict_rows, _ = self.tabular_engine.query(sql_query)
+                table_name = f"telemetry_{workspace_id.replace('-', '_')}"
+                if table_name not in self.tabular_engine.registered_tables:
+                    self.tabular_engine.load_csv(table_name, str(file_path))
+                schema = self.tabular_engine.get_schema(table_name)
+                cols = list(schema.keys())
+
+                temp_col = next((c for c in cols if any(k in c.lower() for k in ["temp", "bearing", "inboard"])), None)
+                vib_col = next((c for c in cols if any(k in c.lower() for k in ["vib", "velocity", "rms"])), None)
+
+                query_sql = f"SELECT * FROM {table_name}"
+                if temp_col:
+                    query_sql += f" ORDER BY {temp_col} DESC"
+                query_sql += " LIMIT 5"
+
+                dict_rows, _ = self.tabular_engine.query(query_sql)
                 if dict_rows:
-                    findings = [f"SQL Telemetry Excursion: {r}" for r in dict_rows]
+                    peak_row = dict_rows[0]
+                    peak_temp = float(peak_row[temp_col]) if temp_col and peak_row.get(temp_col) is not None else None
+                    peak_vib = float(peak_row[vib_col]) if vib_col and peak_row.get(vib_col) is not None else None
+
+                    for r in dict_rows:
+                        findings.append(f"SQL Telemetry Excursion: {r}")
+
+                    citations.append({
+                        "file_id": csv_id,
+                        "filename": csv_name,
+                        "file_type": "csv",
+                        "page": None,
+                        "sheet_or_table": "telemetry_timeseries",
+                        "snippet_or_data": {
+                            "row_range": f"Peak recorded at {peak_row.get('timestamp', 'timestamp')}",
+                            "excursion_variable": temp_col or "telemetry_metric",
+                            "peak_value": peak_temp,
+                            "vibration_rms_peak": peak_vib,
+                        },
+                        "confidence": 0.98,
+                        "file_available": True,
+                    })
             except Exception as e:
                 logger.warning("Tabular query execution error: %s", e)
-                query_status = "QUERY_FAILED"
-                # Keep domain findings fallback for offline demo baseline
+
+        if not citations:
+            return {
+                "findings": [],
+                "citations": [],
+                "status": "UNKNOWN",
+                "message": "No queryable telemetry data rows identified in file",
+            }
 
         return {
             "findings": findings,
-            "citations": [
-                {
-                    "file_id": csv_id,
-                    "filename": csv_name,
-                    "file_type": "csv",
-                    "page": None,
-                    "sheet_or_table": "telemetry_timeseries",
-                    "snippet_or_data": {
-                        "row_range": "Rows 1420-1435",
-                        "excursion_variable": "inboard_bearing_temp_c",
-                        "peak_value": 104.2,
-                        "vibration_rms_peak": 9.82,
-                    },
-                    "confidence": 0.98,
-                    "file_available": True,
-                }
-            ],
+            "citations": citations,
         }
 
     async def run_synthesis_agent(
@@ -168,39 +206,73 @@ class AgentClient:
     ) -> Dict[str, Any]:
         """
         Synthesizes multi-source evidence and runs it through Member 5's Hallucination Firewall & Causal Leap Downgrader.
+        Strict Rule: Can ONLY construct claims from verified citations. Returns INCONCLUSIVE / INSUFFICIENT EVIDENCE otherwise.
         """
         all_citations = []
         all_citations.extend(doc_citations)
         all_citations.extend(tab_data.get("citations", []))
         all_citations.extend(vision_citations)
 
+        if not all_citations:
+            return {
+                "response": (
+                    "### Industrial Assessment: INSUFFICIENT EVIDENCE\n\n"
+                    "**Status: INCONCLUSIVE**\n\n"
+                    "No verified physical inspection evidence, validated telemetry records, "
+                    "or standard operating procedures were provided or resolved for this asset in the workspace. "
+                    "Under CLORA Sovereign Engineering Policy, root-cause conclusions cannot be generated "
+                    "without authoritative corroborating provenance."
+                ),
+                "sources": [],
+                "guardrail_status": "INSUFFICIENT_EVIDENCE",
+                "evidence_grounded": False,
+            }
+
         # 1. Convert citations to Member 5 Evidence models
         evidence_objs = []
         from backend.rag.evidence import Evidence, EvidencePack
 
         for idx, cit in enumerate(all_citations, 1):
+            snippet = cit.get("snippet_or_data", "")
+            if isinstance(snippet, dict):
+                snippet_text = ", ".join(f"{k}: {v}" for k, v in snippet.items())
+            else:
+                snippet_text = str(snippet)
+
             evidence_objs.append(Evidence(
                 evidence_id=f"ev_{idx:03d}",
-                content=str(cit.get("snippet_or_data", "")),
+                content=snippet_text,
                 source_document=cit.get("filename", "Document.pdf"),
                 page_number=int(cit.get("page") or 1),
                 chunk_id=cit.get("file_id", f"c_{idx}"),
-                relevance_score=float(cit.get("confidence", 0.95))
+                relevance_score=float(cit.get("confidence", 0.95)),
             ))
 
         pack = EvidencePack(evidence=evidence_objs)
 
-        # 2. Draft technical synthesis
+        # 2. Build draft strictly grounded in actual citation snippets
+        evidence_lines = []
+        for cit in all_citations:
+            fname = cit.get("filename", "Source")
+            snip = cit.get("snippet_or_data", "")
+            if isinstance(snip, dict):
+                snip_str = ", ".join(f"{k}: {v}" for k, v in snip.items())
+            else:
+                snip_str = str(snip)
+            page_str = f", Page {cit['page']}" if cit.get("page") else ""
+            evidence_lines.append(f"• {snip_str} [Source: {fname}{page_str}]")
+
+        findings_block = "\n".join(evidence_lines)
+        asset_name = triage_data.get("equipment_tag") or "Pump P-101"
+
         draft = (
-            "ANSWER\n────────────────────────\nVerified Findings\n"
-            "• Inboard roller bearing operating temperature reached 104.2°C, exceeding the 80.0°C maximum threshold [Source: Pump_P101_Maintenance_Manual.pdf, Page 42]\n"
-            "• Overall vibration velocity RMS reached 9.82 mm/s, exceeding ISO Class III/IV alarm limits [Source: Pump_P101_Maintenance_Manual.pdf, Page 44]\n"
-            "• Lube oil header pressure dropped to 0.4 bar at 14:15:00Z [Source: Pump_P101_Vibration_Telemetry.csv]\n\n"
-            "Analysis\n"
-            "• Lubrication contamination and valve throttling caused severe bearing overheating which directly led to pump trip and cage deformation.\n\n"
-            "Uncertainty\n"
-            "• The records do not establish whether additional electrical harmonics contributed to the motor trip.\n\n"
-            "Confidence: HIGH\n\nEvidence\n"
+            f"ANSWER\n────────────────────────\nVerified Findings for {asset_name}\n"
+            f"{findings_block}\n\n"
+            f"Analysis\n"
+            f"• Retrieved technical records establish parameter excursions and asset baseline.\n\n"
+            f"Uncertainty\n"
+            f"• Causality is strictly bounded by the sovereign workspace evidence records provided.\n\n"
+            f"Confidence: HIGH\n\nEvidence\n"
         )
 
         # 3. Apply Member 5 Hallucination Firewall & Causal Leap Downgrader
@@ -211,18 +283,17 @@ class AgentClient:
             response_text = guard_out["answer"]
         else:
             response_text = (
-                "### Industrial Root-Cause Analysis: Pump P-101 Bearing Failure\n\n"
-                "Based on the correlated analysis of operational maintenance manuals, high-frequency telemetry, and P&ID schematics:\n\n"
-                "1. **Direct Failure Mechanism**: Rapid thermal spalling and cage failure on the inboard roller bearing of Pump P-101.\n"
-                "2. **Root Cause Sequence**: Lubrication starvation and valve throttling led to dry friction and thermal runaway.\n"
-                "3. **Recommended Corrective Actions**: Overhaul bearing assembly and verify cooling valve CV-104B calibration."
+                f"### Industrial Engineering Assessment: {asset_name}\n\n"
+                f"Based on sovereign analysis of verified workspace records:\n\n"
+                f"**Corroborated Findings:**\n{findings_block}\n\n"
+                f"**Policy Verification:** Grounded across {len(all_citations)} sovereign evidence records."
             )
 
         return {
             "response": response_text,
             "sources": all_citations,
             "guardrail_status": "CAUSAL_HEDGING_APPLIED",
-            "evidence_grounded": True
+            "evidence_grounded": True,
         }
 
 

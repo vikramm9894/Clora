@@ -50,6 +50,7 @@ export default function VisualInspectionView() {
   const [hitlDecision, setHitlDecision] = useState(null);
   const [hitlNotes, setHitlNotes] = useState('');
   const [imageHoverBbox, setImageHoverBbox] = useState(false);
+  const [currentMode, setCurrentMode] = useState('CONTROLLED DEMO');
   const [uploadError, setUploadError] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -77,6 +78,7 @@ export default function VisualInspectionView() {
   const handleInspectFixture = async (fixture = selectedFixture) => {
     if (!fixture) return;
     setLoading(true);
+    setCurrentMode('CONTROLLED DEMO');
     setUploadError(null);
     setHitlDecision(null);
     setVerificationResult(null);
@@ -86,12 +88,12 @@ export default function VisualInspectionView() {
       const ingRes = await ingestVisionFixture(fixture.fixture_id);
       setArtifactRecord(ingRes);
 
-      // 2. Execute 5-level inspection pipeline
+      // 2. Execute 5-level inspection pipeline with explicit controlled demo mode
       const payload = {
         artifact_id: ingRes.artifact_id,
         fixture_id: fixture.fixture_id,
         query: `Inspect ${fixture.equipment_id || 'equipment'} photograph for mechanical degradation and structural defects`,
-        execution_mode: 'test',
+        execution_mode: 'demo',
         telemetry_context: fixture.equipment_id === 'P-101' ? {
           equipment_id: 'P-101',
           vibration_velocity_rms_mm_s: 9.82,
@@ -122,6 +124,7 @@ export default function VisualInspectionView() {
     if (!file) return;
 
     setLoading(true);
+    setCurrentMode('PRODUCTION');
     setUploadError(null);
     setHitlDecision(null);
     setVerificationResult(null);
@@ -133,7 +136,9 @@ export default function VisualInspectionView() {
       const inspectRes = await inspectPhotograph({
         artifact_id: uploadRes.artifact_id,
         query: 'Analyze physical photograph for equipment condition and defect indicators',
-        execution_mode: 'production'
+        execution_mode: 'production',
+        telemetry_context: {},
+        sop_context: {}
       });
 
       setInspectionResult(inspectRes.inspection);
@@ -187,10 +192,13 @@ export default function VisualInspectionView() {
     }
   };
 
-  // Bounding box extraction
+  // Bounding box extraction - strictly validated, never fabricated
   const rawProposal = inspectionResult?.raw_proposal || {};
-  const bbox = rawProposal.bbox_norm || [0.25, 0.22, 0.72, 0.78];
-  const [ymin, xmin, ymax, xmax] = bbox;
+  const hasValidBbox = Array.isArray(rawProposal.bbox_norm) &&
+    rawProposal.bbox_norm.length === 4 &&
+    rawProposal.bbox_norm.every(v => typeof v === 'number' && !isNaN(v) && v >= 0 && v <= 1);
+  const bbox = hasValidBbox ? rawProposal.bbox_norm : null;
+  const [ymin, xmin, ymax, xmax] = bbox || [0, 0, 0, 0];
 
   return (
     <div className="space-y-6">
@@ -203,6 +211,13 @@ export default function VisualInspectionView() {
                 MULTIMODAL VISION • PHYSICAL INSPECTION ENGINE
               </span>
               <span className="status-pill-sage text-[10px]">AIR-GAPPED SOVEREIGN</span>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                currentMode === 'PRODUCTION'
+                  ? 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40'
+                  : 'bg-[#f59e0b]/20 text-[#f59e0b] border border-[#f59e0b]/40'
+              }`}>
+                {currentMode}
+              </span>
             </div>
             <h1 className="text-2xl font-display font-bold text-[#f5f2ed]">
               Deterministic Visual Intelligence & Provenance
@@ -334,8 +349,8 @@ export default function VisualInspectionView() {
                     className="w-full h-full object-contain"
                   />
 
-                  {/* SVG / Styled Overlay Bounding Box */}
-                  {inspectionResult && inspectionResult.inspection_status !== 'INCONCLUSIVE' && (
+                  {/* Styled Overlay Bounding Box - strictly only if validated bbox exists */}
+                  {inspectionResult && inspectionResult.inspection_status !== 'INCONCLUSIVE' && hasValidBbox && (
                     <div
                       onMouseEnter={() => setImageHoverBbox(true)}
                       onMouseLeave={() => setImageHoverBbox(false)}
@@ -360,6 +375,14 @@ export default function VisualInspectionView() {
                           ({Math.round(xmin * 100)}%, {Math.round(ymin * 100)}%)
                         </span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Explicit notification when no validated region exists */}
+                  {inspectionResult && !hasValidBbox && (
+                    <div className="absolute top-3 right-3 bg-[#1e1713]/95 border border-[#f43f5e]/50 text-[#f43f5e] text-[10px] font-mono px-2.5 py-1 rounded shadow-lg flex items-center gap-1.5">
+                      <AlertTriangle size={12} />
+                      <span>NO VALIDATED REGION DETECTED</span>
                     </div>
                   )}
                 </>
@@ -480,13 +503,27 @@ export default function VisualInspectionView() {
 
                     <div className="p-3 rounded-xl bg-[#181614] border border-[#2e2a25] space-y-1">
                       <span className="text-[10px] font-mono text-[#6d675e]">BBOX GEOMETRY</span>
-                      <div className="font-semibold text-[#10b981] flex items-center gap-1">
-                        <CheckCircle2 size={12} />
-                        <span>VALID (Finite [0,1])</span>
-                      </div>
-                      <div className="text-[10px] text-[#a09a90] font-mono">
-                        [{bbox.map(b => b.toFixed(2)).join(', ')}]
-                      </div>
+                      {hasValidBbox ? (
+                        <>
+                          <div className="font-semibold text-[#10b981] flex items-center gap-1">
+                            <CheckCircle2 size={12} />
+                            <span>VALID (Finite [0,1])</span>
+                          </div>
+                          <div className="text-[10px] text-[#a09a90] font-mono">
+                            [{bbox.map(b => b.toFixed(2)).join(', ')}]
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-semibold text-[#f43f5e] flex items-center gap-1">
+                            <AlertTriangle size={12} />
+                            <span>NO VALIDATED REGION</span>
+                          </div>
+                          <div className="text-[10px] text-[#a09a90] font-mono">
+                            [No verified coordinates]
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -638,22 +675,42 @@ export default function VisualInspectionView() {
                   </div>
 
                   {/* Quantitative Telemetry Snapshot */}
-                  <div className="p-3 rounded-xl bg-[#161f24] border border-[#38bdf8]/30 space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-[#7dd3fc]">
-                      <span>CORROBORATING SENSOR TELEMETRY (P-101)</span>
-                      <span>ISO 10816-3 ZONE D</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-[#6d675e] text-[10px]">Vibration Velocity RMS:</span>
-                        <div className="font-mono font-bold text-[#f43f5e]">9.82 mm/s (Trip: 7.1 mm/s)</div>
+                  {crossCorrelation.telemetry_support && crossCorrelation.corroborating_metrics && Object.keys(crossCorrelation.corroborating_metrics).length > 0 ? (
+                    <div className="p-3 rounded-xl bg-[#161f24] border border-[#38bdf8]/30 space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-[#7dd3fc]">
+                        <span>CORROBORATING SENSOR TELEMETRY ({crossCorrelation.equipment_tag || 'ASSET'})</span>
+                        <span>{crossCorrelation.applicable_standard || 'ISO 10816-3'}</span>
                       </div>
-                      <div>
-                        <span className="text-[#6d675e] text-[10px]">Inboard Bearing Temp:</span>
-                        <div className="font-mono font-bold text-[#f59e0b]">104.2 °C (Alarm: 80.0 °C)</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {crossCorrelation.corroborating_metrics.vibration_velocity_rms_mm_s !== undefined && (
+                          <div>
+                            <span className="text-[#6d675e] text-[10px]">Vibration Velocity RMS:</span>
+                            <div className="font-mono font-bold text-[#f43f5e]">
+                              {crossCorrelation.corroborating_metrics.vibration_velocity_rms_mm_s} mm/s (Trip: 7.1 mm/s)
+                            </div>
+                          </div>
+                        )}
+                        {crossCorrelation.corroborating_metrics.bearing_temperature_c !== undefined && (
+                          <div>
+                            <span className="text-[#6d675e] text-[10px]">Inboard Bearing Temp:</span>
+                            <div className="font-mono font-bold text-[#f59e0b]">
+                              {crossCorrelation.corroborating_metrics.bearing_temperature_c} °C (Alarm: 80.0 °C)
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-[#181614] border border-[#2e2a25] space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-[#6d675e]">
+                        <span>SENSOR TELEMETRY STATUS</span>
+                        <span className="text-[#f59e0b] font-bold">NO TELEMETRY AVAILABLE</span>
+                      </div>
+                      <div className="text-xs text-[#a09a90]">
+                        No corroborating sensor time-series telemetry linked to this artifact. Status: UNCORROBORATED.
+                      </div>
+                    </div>
+                  )}
 
                   {/* Finding Text */}
                   <div className="p-3 rounded-xl bg-[#181614] border border-[#2e2a25] space-y-1">

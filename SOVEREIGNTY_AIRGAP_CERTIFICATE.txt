@@ -1,28 +1,29 @@
 ================================================================================
-   INDUSAI-X: SOVEREIGN ON-PREMISE AI WORKBENCH - NETWORK PROOF CERTIFICATE   
+   INDUSAI-X: SOVEREIGN ON-PREMISE AI WORKBENCH                                
+   INDUSAI-X SOVEREIGNTY & AIR-GAP COMPLIANCE CERTIFICATE                     
    CLORA / INDUSAI-X: NETWORK COMPLIANCE & APPLICATION EGRESS ATTESTATION     
    Mangalore Refinery and Petrochemicals Limited (MRPL SIH26117)              
 ================================================================================
 
-Timestamp:              2026-09-06T18:16:27.207943+00:00
+Timestamp:              2026-09-11T19:22:46.333726+00:00
 Verification Status:    ALERT / VIOLATION RECORDED
 Active Network Profile: STRICT_AIRGAP
-Audited Checkpoints:    2 snapshot cycles
+Audited Checkpoints:    8 snapshot cycles
 External Sockets Found: 0
 Blocked Egress Attempts:0
 Hash Chain Integrity:   COMPROMISED
-Root Integrity Hash:    25886aec0c2284f6c0f3001ca04d9a31d6f8d6bcf3554242209667334f8bea59
+Root Integrity Hash:    d7ee4ae874b05952771b1397875c58c4526f24c64791b68014e4549258b667a4
 Audit Log File:         C:\Users\Moiz\Desktop\PROJECTS\Clora\airgap_proof_log.jsonl
 
 OPERATIONAL CONTROL SCOPE:
-Level A (Application Egress Guard):
-  - All outbound network calls from the CLORA Python process are evaluated against
+Layer 1 (OS Enforcement Boundary):
+  - Named firewall rule CLORA_DENY_OUTBOUND blocks all outbound host traffic.
+Level A (Application Egress Guard) / Layer 2 Instrumentation:
+  - All outbound network calls and DNS resolutions from the CLORA Python process are evaluated against
     the active Network Trust Profile prior to socket connection handshakes.
   - Disallowed destinations are synchronously blocked with AirGapViolationError.
   - Zero external cloud inference APIs were contacted during document extraction,
     vector indexing, local model execution, and report generation.
-
-Level B (Host/Deployment Guidance):
-  - Designed to operate securely within refinery-managed OT/SCADA air-gapped VLANs
-    and isolated host network policies.
+Layer 3 (Cryptographic Evidence):
+  - Tamper-evident SHA-256 hash chain and Ed25519 digital signatures.
 ================================================================================

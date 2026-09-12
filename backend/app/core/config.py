@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     AIRGAP_STARTUP_VALIDATION: bool = True
     AIRGAP_DNS_HOOK_ENABLED: bool = True
     AIRGAP_OS_DENY_RULE_NAME: str = "CLORA_DENY_OUTBOUND"
-    AIRGAP_STRICT_MODE: str = "warn_only"
+    AIRGAP_STRICT_MODE: str = "strict"
     KEYS_DIR: Path = Path("./storage/keys")
 
     ALLOWED_EXTENSIONS: list[str] = [

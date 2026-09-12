@@ -311,7 +311,8 @@ class AirGapSentinel:
 
         attestation_text = (
             "================================================================================\n"
-            "   INDUSAI-X: SOVEREIGN ON-PREMISE AI WORKBENCH - NETWORK PROOF CERTIFICATE   \n"
+            "   INDUSAI-X: SOVEREIGN ON-PREMISE AI WORKBENCH                                \n"
+            "   INDUSAI-X SOVEREIGNTY & AIR-GAP COMPLIANCE CERTIFICATE                     \n"
             "   CLORA / INDUSAI-X: NETWORK COMPLIANCE & APPLICATION EGRESS ATTESTATION     \n"
             "   Mangalore Refinery and Petrochemicals Limited (MRPL SIH26117)              \n"
             "================================================================================\n\n"

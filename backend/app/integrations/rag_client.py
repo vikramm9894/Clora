@@ -26,9 +26,12 @@ class RagClient:
         self._store = None
         self._embedder = None
         self._reranker = None
-        self._init_local_rag()
+        self._initialized = False
 
-    def _init_local_rag(self):
+    def _ensure_local_rag(self):
+        if self._initialized:
+            return
+        self._initialized = True
         try:
             from backend.rag.chroma_store import ChromaEvidenceStore
             from backend.rag.embeddings import LocalEmbeddingService
@@ -38,6 +41,7 @@ class RagClient:
             self._reranker = IndustrialReranker(top_k=3)
         except Exception as e:
             logger.warning("Local RAG in-memory engine initialized in fallback mode: %s", e)
+
 
     async def retrieve_context(
         self,
@@ -52,6 +56,7 @@ class RagClient:
         Applies permission filtering, self-healing query expansion, and domain reranking.
         """
         # 1. Attempt live in-process ChromaDB retrieval if available and populated
+        self._ensure_local_rag()
         if self._store and self._embedder:
             try:
                 from backend.agents.rag_agent import RAGAgent

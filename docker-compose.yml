@@ -1,9 +1,9 @@
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: indusai_backend
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: clora_backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -12,11 +12,12 @@ services:
       - DATABASE_URL=sqlite:///./storage/indusai.db
       - STORAGE_DIR=./storage
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - INTERNAL_SERVICE_KEY=indusai-internal-worker-key-dev
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY:-indusai-internal-worker-key-dev}
       - MAX_FILE_SIZE_MB=50
       - SYNC_QUERY_TIMEOUT_SEC=15
+      - AIRGAP_STRICT_MODE=strict
     volumes:
-      - ./backend/storage:/app/storage
+      - ./storage:/app/storage
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -24,3 +25,15 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clora_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
