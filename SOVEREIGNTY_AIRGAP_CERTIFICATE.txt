@@ -5,14 +5,14 @@
    Mangalore Refinery and Petrochemicals Limited (MRPL SIH26117)              
 ================================================================================
 
-Timestamp:              2026-09-11T19:22:46.333726+00:00
+Timestamp:              2026-09-12T05:40:19.059537+00:00
 Verification Status:    ALERT / VIOLATION RECORDED
 Active Network Profile: STRICT_AIRGAP
-Audited Checkpoints:    8 snapshot cycles
+Audited Checkpoints:    10 snapshot cycles
 External Sockets Found: 0
 Blocked Egress Attempts:0
 Hash Chain Integrity:   COMPROMISED
-Root Integrity Hash:    d7ee4ae874b05952771b1397875c58c4526f24c64791b68014e4549258b667a4
+Root Integrity Hash:    a50a9d0ab6892f2abb6073ccf092ca826c7eea7cf07a9bb764decf691b67a5fb
 Audit Log File:         C:\Users\Moiz\Desktop\PROJECTS\Clora\airgap_proof_log.jsonl
 
 OPERATIONAL CONTROL SCOPE:

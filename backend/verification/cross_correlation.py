@@ -8,6 +8,7 @@ Binds:
 3. Authoritative Standard Operating Procedure (SOP) Evidence from RAG
 """
 
+import hashlib
 import logging
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
@@ -62,7 +63,7 @@ class CrossModalCorrelator:
         """
         Executes cross-modal corroboration across visual, telemetry, and SOP domains.
         """
-        tag = equipment_tag or (visual_result.equipment_tag if visual_result else "P-101")
+        tag = equipment_tag or (visual_result.equipment_tag if visual_result else "UNKNOWN")
         t = telemetry_context or {}
         
         # Support either sop_evidence or sop_context
@@ -98,46 +99,72 @@ class CrossModalCorrelator:
         vib_rms = t.get("vibration_rms", t.get("vibration_velocity_rms", t.get("vibration_velocity_rms_mm_s", t.get("vibration"))))
         temp_c = t.get("bearing_temp_c", t.get("bearing_temperature_c", t.get("temperature_c", t.get("stator_temp_c", t.get("temp_c")))))
 
+        # Item 6: Equipment matching and schema validation
+        telem_eq = str(t.get("equipment_id", t.get("equipment_tag", ""))).strip().upper()
+        norm_tag = str(tag).strip().upper()
+        equipment_mismatch = bool(
+            telem_eq and norm_tag and norm_tag != "UNKNOWN" and telem_eq not in norm_tag and norm_tag not in telem_eq
+        )
+
+        vib_val = None
+        temp_val = None
         if vib_rms is not None:
-            corroborating_metrics["vibration_velocity_rms_mms"] = float(vib_rms)
+            try:
+                vib_val = float(vib_rms)
+                corroborating_metrics["vibration_velocity_rms_mm_s"] = vib_val
+            except (ValueError, TypeError):
+                pass
         if temp_c is not None:
-            corroborating_metrics["temperature_c"] = float(temp_c)
+            try:
+                temp_val = float(temp_c)
+                corroborating_metrics["bearing_temperature_c"] = temp_val
+            except (ValueError, TypeError):
+                pass
 
         # Corroborate against engineering profile
         profile = EngineeringPolicyGate.resolve_profile(
             proposal=visual_result.validated_proposal if visual_result else None  # type: ignore
         ) if visual_result else POLICY_REGISTRY["P101_BEARING_PROFILE"]
 
-        vib_val = float(vib_rms) if vib_rms is not None else None
-        temp_val = float(temp_c) if temp_c is not None else None
+        # Item 13: Expose dynamic thresholds in corroborating_metrics for frontend display
+        corroborating_metrics["thresholds"] = {
+            "vibration_velocity_warning_mms": profile.vibration_velocity_warning_mms,
+            "vibration_velocity_critical_mms": profile.vibration_velocity_critical_mms,
+            "bearing_temp_warning_c": profile.bearing_temp_warning_c,
+            "bearing_temp_critical_c": profile.bearing_temp_critical_c,
+        }
 
         vib_exceeded = vib_val is not None and vib_val >= profile.vibration_velocity_warning_mms
         temp_exceeded = temp_val is not None and temp_val >= profile.bearing_temp_warning_c
 
-        if vib_exceeded or temp_exceeded:
+        # Telemetry only supports claim if equipment matches and threshold was actually exceeded
+        if not equipment_mismatch and (vib_exceeded or temp_exceeded):
             telemetry_support = True
-            telem_ev_id = "ev_telem_scada_p101"
+            # Item 5: Cryptographically bind telemetry evidence ID to actual equipment, metric values, and timestamp
+            telem_payload = f"{norm_tag}:{vib_val}:{temp_val}:{t.get('timestamp', '')}:{t.get('file_id', '')}"
+            telem_hash = hashlib.sha256(telem_payload.encode("utf-8")).hexdigest()[:8].upper()
+            telem_ev_id = f"TELEM-{norm_tag.replace(' ', '_')}-{telem_hash}"
 
         # 3. SOP Support Analysis
+        # Item 7: Require genuine external SOP citation with document ID/source, not self-reinforcing recommendations
         sop_support = False
         sop_ev_id = None
         sop_rec = ""
 
         for sop in sops:
-            content = (sop.get("content") or sop.get("text") or sop.get("title") or sop.get("sop_id") or "").lower()
-            doc_name = (sop.get("source_document") or sop.get("source") or sop.get("title") or "").lower()
-            if any(k in content or k in doc_name for k in ["sop", "procedure", "maintenance", "section 4", "bearing replacement", "api 610"]):
-                sop_support = True
-                sop_ev_id = sop.get("evidence_id", sop.get("sop_id", "ev_sop_mnt_p101"))
-                sop_rec = (sop.get("content") or sop.get("title") or "")[:180]
-                break
+            if not isinstance(sop, dict):
+                continue
+            content = (sop.get("content") or sop.get("text") or sop.get("snippet") or "").strip()
+            sop_id = (sop.get("sop_id") or sop.get("evidence_id") or sop.get("file_id") or "").strip()
+            doc_name = (sop.get("source_document") or sop.get("filename") or sop.get("source") or sop.get("title") or "").strip()
 
-        # If no explicit SOP found in evidence list, check if policy gate generated an evidence-bound SOP recommendation
-        if not sop_support and visual_result and visual_result.evidence_bound_recommendation:
-            if "SOP" in visual_result.evidence_bound_recommendation:
+            c_combined = f"{content} {doc_name} {sop_id}".lower()
+            sop_triggers = ["sop", "procedure", "maintenance", "section 4", "bearing replacement", "api 610", "iso 10816"]
+            if (sop_id or doc_name) and any(k in c_combined for k in sop_triggers):
                 sop_support = True
-                sop_ev_id = "ev_sop_policy_rule"
-                sop_rec = visual_result.evidence_bound_recommendation
+                sop_ev_id = sop_id or f"SOP-{hashlib.sha256(doc_name.encode('utf-8')).hexdigest()[:8].upper()}"
+                sop_rec = content[:180] or doc_name
+                break
 
         # 4. Synthesize Corroboration Strength
         if visual_support and telemetry_support and sop_support:

@@ -333,14 +333,23 @@ class OllamaPhotoProvider(BasePhotoProvider):
                 if resp.status_code == 200:
                     tags = resp.json().get("models", [])
                     available_names = [m.get("name") for m in tags if isinstance(m, dict)]
-                    # If specified model is not installed but other models exist, adapt
+                    # Item 12: Strictly check for verified vision-capable architectures
+                    KNOWN_VISION_MODELS = ["llava", "bakllava", "llama-3.2-vision", "qwen2-vl", "moondream", "minicpm-v", "cogvlm"]
                     if self.model_name not in available_names and available_names:
-                        vision_candidates = [n for n in available_names if "vision" in n.lower() or "qwen" in n.lower()]
+                        vision_candidates = [
+                            n for n in available_names
+                            if any(vm in n.lower() for vm in KNOWN_VISION_MODELS) or "vision" in n.lower()
+                        ]
                         if vision_candidates:
                             self.model_name = vision_candidates[0]
+                            self._is_available = True
                         else:
-                            self.model_name = available_names[0]
-                    self._is_available = True
+                            # Do not silently substitute a pure text LLM as a vision model
+                            logger.warning("No vision-capable VLM installed in local Ollama daemon (available: %s)", available_names)
+                            self._is_available = False
+                            return False
+                    else:
+                        self._is_available = (self.model_name in available_names) if available_names else False
                 else:
                     self._is_available = False
         except Exception:
@@ -539,19 +548,24 @@ class PhotographInspectionEngine:
         # Check if hash is in fixture registry
         is_known_fixture = (content_hash in self.test_provider.registry)
         is_test_mode = (
-            self.force_mode == "test"
-            or meta.get("mode") == "test"
-            or meta.get("execution_mode") == "test"
+            self.force_mode in ("test", "demo")
+            or meta.get("mode") in ("test", "demo")
+            or meta.get("execution_mode") in ("test", "demo")
         )
 
         # Include content_hash in metadata passed to provider
         merged_meta = dict(meta)
         merged_meta["content_hash"] = content_hash
 
-        if is_test_mode or is_known_fixture:
+        # Item 3: In production, NEVER silently switch to test provider based on hash.
+        # Production mode ALWAYS evaluates via production provider (Local Ollama VLM).
+        # Calibrated test provider is strictly restricted to explicit controlled test / demo modes.
+        if is_test_mode and is_known_fixture:
+            provider = self.test_provider
+        elif is_test_mode:
             provider = self.test_provider
         else:
-            # Unknown image under production -> Local Ollama VLM
+            # Production execution mode -> Always production provider (Local Ollama VLM)
             provider = self.production_provider
 
         try:
@@ -630,7 +644,22 @@ class PhotographInspectionEngine:
             req_review = True
         elif conf.classification_confidence >= 0.80 and domain_val.status == "VALID":
             insp_status = InspectionStatus.VERIFIED
-            ev_status = EvidenceStatus.CORROBORATED if telemetry_context else EvidenceStatus.VERIFIED
+            # Item 8: Presence != Corroboration.
+            # Independent validation requires matching equipment and actual numeric threshold excursion.
+            telemetry_corroborated = False
+            if telemetry_context and isinstance(telemetry_context, dict):
+                t_eq = str(telemetry_context.get("equipment_id", telemetry_context.get("equipment_tag", ""))).strip().upper()
+                p_eq = str(raw_proposal.equipment_tag_candidate or "").strip().upper()
+                same_eq = (not t_eq or not p_eq) or (t_eq in p_eq or p_eq in t_eq)
+
+                vib = telemetry_context.get("vibration_velocity_rms_mm_s") or telemetry_context.get("vibration_velocity_rms") or telemetry_context.get("vibration_rms")
+                temp = telemetry_context.get("bearing_temperature_c") or telemetry_context.get("bearing_temp_c") or telemetry_context.get("temperature_c")
+                has_excursion = (vib is not None and float(vib) >= 4.5) or (temp is not None and float(temp) >= 80.0)
+
+                if same_eq and has_excursion:
+                    telemetry_corroborated = True
+
+            ev_status = EvidenceStatus.CORROBORATED if telemetry_corroborated else EvidenceStatus.VERIFIED
         else:
             insp_status = InspectionStatus.REQUIRES_REVIEW
             ev_status = EvidenceStatus.REQUIRES_REVIEW

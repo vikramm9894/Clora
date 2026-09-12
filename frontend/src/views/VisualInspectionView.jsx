@@ -686,7 +686,7 @@ export default function VisualInspectionView() {
                           <div>
                             <span className="text-[#6d675e] text-[10px]">Vibration Velocity RMS:</span>
                             <div className="font-mono font-bold text-[#f43f5e]">
-                              {crossCorrelation.corroborating_metrics.vibration_velocity_rms_mm_s} mm/s (Trip: 7.1 mm/s)
+                              {crossCorrelation.corroborating_metrics.vibration_velocity_rms_mm_s} mm/s {crossCorrelation.corroborating_metrics.thresholds?.vibration_velocity_critical_mms ? `(Trip: ${crossCorrelation.corroborating_metrics.thresholds.vibration_velocity_critical_mms} mm/s)` : ''}
                             </div>
                           </div>
                         )}
@@ -694,7 +694,7 @@ export default function VisualInspectionView() {
                           <div>
                             <span className="text-[#6d675e] text-[10px]">Inboard Bearing Temp:</span>
                             <div className="font-mono font-bold text-[#f59e0b]">
-                              {crossCorrelation.corroborating_metrics.bearing_temperature_c} °C (Alarm: 80.0 °C)
+                              {crossCorrelation.corroborating_metrics.bearing_temperature_c} °C {crossCorrelation.corroborating_metrics.thresholds?.bearing_temp_warning_c ? `(Alarm: ${crossCorrelation.corroborating_metrics.thresholds.bearing_temp_warning_c} °C)` : ''}
                             </div>
                           </div>
                         )}
