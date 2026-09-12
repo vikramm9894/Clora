@@ -127,11 +127,15 @@ class CrossModalCorrelator:
         ) if visual_result else POLICY_REGISTRY["P101_BEARING_PROFILE"]
 
         # Item 13: Expose dynamic thresholds in corroborating_metrics for frontend display
+        v_crit = getattr(profile, "vibration_velocity_trip_mms", getattr(profile, "vibration_velocity_critical_mms", 7.1))
+        t_crit = getattr(profile, "bearing_temp_trip_c", getattr(profile, "bearing_temp_critical_c", 95.0))
         corroborating_metrics["thresholds"] = {
-            "vibration_velocity_warning_mms": profile.vibration_velocity_warning_mms,
-            "vibration_velocity_critical_mms": profile.vibration_velocity_critical_mms,
-            "bearing_temp_warning_c": profile.bearing_temp_warning_c,
-            "bearing_temp_critical_c": profile.bearing_temp_critical_c,
+            "vibration_velocity_warning_mms": getattr(profile, "vibration_velocity_warning_mms", 4.5),
+            "vibration_velocity_critical_mms": v_crit,
+            "vibration_velocity_trip_mms": v_crit,
+            "bearing_temp_warning_c": getattr(profile, "bearing_temp_warning_c", 80.0),
+            "bearing_temp_critical_c": t_crit,
+            "bearing_temp_trip_c": t_crit,
         }
 
         vib_exceeded = vib_val is not None and vib_val >= profile.vibration_velocity_warning_mms

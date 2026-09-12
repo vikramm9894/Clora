@@ -340,10 +340,11 @@ def test_blurry_photo_triggers_inconclusive():
 
 def test_multimodal_vision_agent_end_to_end():
     agent = MultimodalVisionAgent()
-    # Photograph query
+    # Photograph query with explicit test mode and fixture path
     res = agent.analyze(
         question="Analyze the bearing photo for Pump P-101 and check for spalling",
-        drawing_metadata={"id": "img_p101_bearing", "fixture_scenario": "P101_BEARING_SPALLING"},
+        drawing_path="samples/vision_fixtures/p101_bearing.jpg",
+        drawing_metadata={"id": "img_p101_bearing", "fixture_scenario": "P101_BEARING_SPALLING", "execution_mode": "test"},
         telemetry_context={"vibration_rms": 9.82, "bearing_temp_c": 104.2}
     )
     assert "citations" in res
@@ -360,6 +361,13 @@ def test_multimodal_vision_agent_end_to_end():
 
 def test_langgraph_workflow_with_visual_evidence():
     from backend.graph.workflow import build_workflow
+    from backend.app.services.artifact_manager import default_artifact_manager
+
+    rec = default_artifact_manager.ingest_artifact(
+        file_input="samples/vision_fixtures/p101_bearing.jpg",
+        filename="p101_bearing.jpg",
+        metadata={"fixture_scenario": "P101_BEARING_SPALLING"},
+    )
 
     workflow = build_workflow()
 
@@ -367,7 +375,9 @@ def test_langgraph_workflow_with_visual_evidence():
         "user_query": "Inspect P-101 bearing photo and determine whether it explains the vibration spike",
         "user_id": "eng_01",
         "user_role": "maintenance_engineer",
-        "image_artifact_id": "img_p101_bearing",
+        "image_artifact_id": rec.artifact_id,
+        "execution_mode": "test",
+        "fixture_scenario": "P101_BEARING_SPALLING",
         "telemetry_context": {"vibration_rms": 9.82, "bearing_temp_c": 104.2},
         "evidence": [
             {
@@ -377,6 +387,14 @@ def test_langgraph_workflow_with_visual_evidence():
                 "page_number": 1,
                 "chunk_id": "c_telem_01",
                 "relevance_score": 0.98,
+            },
+            {
+                "evidence_id": "sop_p101_01",
+                "content": "SOP-MRPL-P101-MNT Section 4.2: Centrifugal pump bearing replacement procedure and vibration limit enforcement.",
+                "source_document": "Pump_P101_Maintenance_Manual.pdf",
+                "page_number": 42,
+                "chunk_id": "c_sop_01",
+                "relevance_score": 0.95,
             }
         ]
     }
